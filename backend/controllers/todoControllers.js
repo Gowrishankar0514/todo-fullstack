@@ -1,173 +1,158 @@
-const fs = require("fs");
-const path = require("path");
+const {
+  getAllTodos,
+  createTodo,
+  updateTodo,
+  deleteTodo,
+} = require("../models/todoModel");
 
-//GET Method
-const getTodos = (req, res) => {
-  const filePath = path.join(__dirname, "../data/todos.json");
+// GET /api/todos
+const getTodos = async (req, res) => {
+  try {
+    const rows = await getAllTodos();
 
-  fs.readFile(filePath, "utf8", (err, data) => {
-    if (err) {
-      return res.status(500).json({
-        message: "Failed to read todos",
-      });
-    }
-    const todos = JSON.parse(data);
+    const todos = rows.map((row) => ({
+      id: row.id,
+      task: row.task,
+      createdAt: row.created_at,
+      completed: row.completed,
+    }));
 
     res.status(200).json(todos);
-  });
+  } catch (error) {
+    console.error("Failed to fetch todos:", error);
+
+    res.status(500).json({
+      message: "Failed to fetch todos",
+    });
+  }
 };
 
-//POST Method
-const createTodo = (req, res) => {
+// POST /api/todos
+const createTodoController = async (req, res) => {
   const { task } = req.body;
 
-  //Valid task
   if (!task || task.trim() === "") {
-    return res.status(400).json({ message: "Task is required" });
+    return res.status(400).json({
+      message: "Task is required",
+    });
   }
-  const filePath = path.join(__dirname, "../data/todos.json");
 
-  //read existing todos
+  try {
+    const row = await createTodo(task.trim());
 
-  fs.readFile(filePath, "utf8", (err, data) => {
-    if (err) {
-      return res.status(500).json({
-        message: "Failed to read todos",
-      });
-    }
-    const todos = JSON.parse(data);
-
-    //generate new ID
-    const newId =
-      todos.length > 0 ? Math.max(...todos.map((todo) => todo.id)) + 1 : 1;
-
-    //Create newTodo
     const newTodo = {
-      id: newId,
-      task: task.trim(),
-      createdAt: new Date().toISOString(),
-      completed: false,
+      id: row.id,
+      task: row.task,
+      createdAt: row.created_at,
+      completed: row.completed,
     };
 
-    //Add new todo to array
-    todos.push(newTodo);
+    res.status(201).json(newTodo);
+  } catch (error) {
+    console.error("Failed to create todo:", error);
 
-    //Save updated array to JSON file
-    fs.writeFile(
-      filePath,
-      JSON.stringify(todos, null, 2),
-      "utf8",
-      (writeErr) => {
-        if (writeErr) {
-          return res.send(500).json({
-            message: "FAiled to save todo",
-          });
-        }
-        //send created todo back
-        res.status(201).json(newTodo);
-      },
-    );
-  });
+    res.status(500).json({
+      message: "Failed to create todo",
+    });
+  }
 };
 
-//PUT Method
-const updateTodo = (req, res) => {
+// PUT /api/todos/:id
+const updateTodoController = async (req, res) => {
   const todoId = Number(req.params.id);
+
   const { task, completed } = req.body;
 
-  const filePath = path.join(__dirname, "../data/todos.json");
+  if (Number.isNaN(todoId)) {
+    return res.status(400).json({
+      message: "Invalid todo ID",
+    });
+  }
 
-  fs.readFile(filePath, "utf8", (err, data) => {
-    if (err) {
-      return res.send(500).json({ message: "Failed to read todos" });
-    }
+  if (task === undefined && completed === undefined) {
+    return res.status(400).json({
+      message: "Nothing to update",
+    });
+  }
 
-    const todos = JSON.parse(data);
+  if (task !== undefined && (typeof task !== "string" || task.trim() === "")) {
+    return res.status(400).json({
+      message: "Task cannot be empty",
+    });
+  }
 
-    const todoIndex = todos.findIndex((todo) => todo.id === todoId);
+  try {
+    const row = await updateTodo(
+      todoId,
+      task !== undefined ? task.trim() : undefined,
+      completed,
+    );
 
-    if (todoIndex === -1) {
+    if (!row) {
       return res.status(404).json({
         message: "Todo not found",
       });
     }
-    if (task !== undefined) {
-      if (typeof task !== "string" || task.trim() == "") {
-        return res.status(400).json({
-          message: "Task cannot be empty",
-        });
-      }
-      todos[todoIndex].task = task.trim();
-    }
 
-    if (completed !== undefined) {
-      todos[todoIndex].completed = Boolean(completed);
-    }
+    const updatedTodo = {
+      id: row.id,
+      task: row.task,
+      createdAt: row.created_at,
+      completed: row.completed,
+    };
 
-    fs.writeFile(
-      filePath,
-      JSON.stringify(todos, null, 2),
-      "utf8",
-      (writeErr) => {
-        if (writeErr) {
-          return res.status(500).json({
-            message: "Failed to update todo",
-          });
-        }
-        res.status(200).json(todos[todoIndex]);
-      },
-    );
-  });
+    res.status(200).json(updatedTodo);
+  } catch (error) {
+    console.error("Failed to update todo:", error);
+
+    res.status(500).json({
+      message: "Failed to update todo",
+    });
+  }
 };
 
-//delete Todo
-const deleteTodo = (req, res) => {
+// DELETE /api/todos/:id
+const deleteTodoController = async (req, res) => {
   const todoId = Number(req.params.id);
 
-  const filePath = path.join(__dirname, "../data/todos.json");
+  if (Number.isNaN(todoId)) {
+    return res.status(400).json({
+      message: "Invalid todo ID",
+    });
+  }
 
-  fs.readFile(filePath, "utf8", (err, data) => {
-    if (err) {
-      return res.status(500).json({
-        message: "Failed to read todos",
-      });
-    }
-    const todos = JSON.parse(data);
+  try {
+    const row = await deleteTodo(todoId);
 
-    const todoIndex = todos.findIndex((todo) => todo.id === todoId);
-
-    if (todoIndex === -1) {
+    if (!row) {
       return res.status(404).json({
         message: "Todo not found",
       });
     }
-    const deletedTodo = todos[todoIndex];
 
-    todos.splice(todoIndex, 1);
+    const deletedTodo = {
+      id: row.id,
+      task: row.task,
+      createdAt: row.created_at,
+      completed: row.completed,
+    };
 
-    fs.writeFile(
-      filePath,
-      JSON.stringify(todos, null, 2),
-      "utf8",
-      (writeErr) => {
-        if (writeErr) {
-          return res.status(500).json({
-            message: "Failed to delete todo",
-          });
-        }
+    res.status(200).json({
+      message: "Todo deleted successfully",
+      todo: deletedTodo,
+    });
+  } catch (error) {
+    console.error("Failed to delete todo:", error);
 
-        res.status(200).json({
-          message: "Todo delete successfully",
-          todo: deletedTodo,
-        });
-      },
-    );
-  });
+    res.status(500).json({
+      message: "Failed to delete todo",
+    });
+  }
 };
 
 module.exports = {
   getTodos,
-  createTodo,
-  updateTodo,
-  deleteTodo,
+  createTodo: createTodoController,
+  updateTodo: updateTodoController,
+  deleteTodo: deleteTodoController,
 };
